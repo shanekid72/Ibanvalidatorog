@@ -1,40 +1,49 @@
 package com.pearldatadirect.ibanvalidator.validation;
 
-import jakarta.validation.ConstraintViolation;
-import jakarta.validation.Validation;
-import jakarta.validation.Validator;
-import jakarta.validation.ValidatorFactory;
+import com.pearldatadirect.ibanvalidator.registry.AeBankCodeRegistry;
+import com.pearldatadirect.ibanvalidator.registry.AeBankInfo;
+import jakarta.validation.ConstraintValidatorContext;
 import org.iban4j.CountryCode;
 import org.iban4j.Iban;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.Set;
+import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
 
+@ExtendWith(MockitoExtension.class)
 class AeIbanValidatorTest {
 
-  private static ValidatorFactory factory;
-  private static Validator validator;
+  @Mock
+  AeBankCodeRegistry registry;
 
-  private record Payload(@AeIban String iban) {}
+  @Mock
+  ConstraintValidatorContext context;
 
-  @BeforeAll
-  static void setup() {
-    factory = Validation.buildDefaultValidatorFactory();
-    validator = factory.getValidator();
-  }
+  @Mock
+  ConstraintValidatorContext.ConstraintViolationBuilder builder;
 
-  @AfterAll
-  static void tearDown() {
-    factory.close();
+  AeIbanValidator validator;
+
+  @BeforeEach
+  void setup() {
+    validator = new AeIbanValidator(registry);
+    lenient().when(context.buildConstraintViolationWithTemplate(anyString())).thenReturn(builder);
   }
 
   @Test
   void acceptsValidAeIban_canonicalAndFormatted() {
-    // Bank code 033 exists in the provided UAE participant list (e.g., Mashreq is 033).
+    // Mock the registry to accept "033"
+    when(registry.get("033")).thenReturn(Optional.of(mock(AeBankInfo.class)));
+    when(registry.isValid("033")).thenReturn(true);
+
     Iban valid = new Iban.Builder()
         .countryCode(CountryCode.AE)
         .bankCode("033")
@@ -42,11 +51,11 @@ class AeIbanValidatorTest {
         .build();
 
     // canonical
-    assertTrue(validator.validate(new Payload(valid.toString())).isEmpty());
+    assertTrue(validator.isValid(valid.toString(), context));
 
     // formatted (spaces) + lower-case input should still pass (we normalize)
     String formattedLower = valid.toFormattedString().toLowerCase();
-    assertTrue(validator.validate(new Payload(formattedLower)).isEmpty());
+    assertTrue(validator.isValid(formattedLower, context));
   }
 
   @Test
@@ -63,46 +72,43 @@ class AeIbanValidatorTest {
     char flipped = (last == '9') ? '8' : '9';
     String bad = s.substring(0, s.length() - 1) + flipped;
 
-    Set<ConstraintViolation<Payload>> violations = validator.validate(new Payload(bad));
-    assertFalse(violations.isEmpty());
-    assertEquals("Invalid IBAN check digits", violations.iterator().next().getMessage());
+    assertFalse(validator.isValid(bad, context));
+    verify(context).buildConstraintViolationWithTemplate("Invalid IBAN check digits");
   }
 
   @Test
   void rejectsNonAe() {
     String nonAe = "GB82WEST12345698765432";
-    Set<ConstraintViolation<Payload>> violations = validator.validate(new Payload(nonAe));
-    assertFalse(violations.isEmpty());
-    assertEquals("IBAN must start with AE", violations.iterator().next().getMessage());
+    assertFalse(validator.isValid(nonAe, context));
+    verify(context).buildConstraintViolationWithTemplate("IBAN must start with AE");
   }
 
   @Test
   void rejectsBadCharacters() {
     String badChars = "AE07-0331-2345-6789-0123-456";
-    Set<ConstraintViolation<Payload>> violations = validator.validate(new Payload(badChars));
-    assertFalse(violations.isEmpty());
-    assertEquals("IBAN must be alphanumeric", violations.iterator().next().getMessage());
+    assertFalse(validator.isValid(badChars, context));
+    verify(context).buildConstraintViolationWithTemplate("IBAN must be alphanumeric");
   }
 
   @Test
   void rejectsWrongLength() {
     String tooShort = "AE07033123456789012345"; // 22 chars
-    Set<ConstraintViolation<Payload>> violations = validator.validate(new Payload(tooShort));
-    assertFalse(violations.isEmpty());
-    assertEquals("UAE (AE) IBAN must be exactly 23 characters", violations.iterator().next().getMessage());
+    assertFalse(validator.isValid(tooShort, context));
+    verify(context).buildConstraintViolationWithTemplate("UAE (AE) IBAN must be exactly 23 characters");
   }
 
   @Test
   void rejectsUnknownBankCode_evenIfChecksumIsValid() {
-    // 999 is not in the provided list (max in the sheet is 809), but iban4j can still create a structurally valid AE IBAN.
+    // 999 is valid structurally but unknown in registry
+    when(registry.get("999")).thenReturn(Optional.empty());
+
     Iban iban = new Iban.Builder()
         .countryCode(CountryCode.AE)
         .bankCode("999")
         .accountNumber("1234567890123456")
         .build();
 
-    Set<ConstraintViolation<Payload>> violations = validator.validate(new Payload(iban.toString()));
-    assertFalse(violations.isEmpty());
-    assertEquals("Unknown UAE bank code", violations.iterator().next().getMessage());
+    assertFalse(validator.isValid(iban.toString(), context));
+    verify(context).buildConstraintViolationWithTemplate("Unknown UAE bank code");
   }
 }

@@ -8,6 +8,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -46,7 +47,7 @@ class BanksControllerTest {
   @Test
   void searchReturnsList() throws Exception {
     AeBankInfo info = new AeBankInfo("033", "Mashreq", "Mashreq", "BOMLAEAD", "BOMLAEADXXX", "203320101", "Live");
-    when(registry.search("mash", null, 50)).thenReturn(List.of(info));
+    when(registry.search("mash", null, 50)).thenReturn(new ArrayList<>(List.of(info)));
 
     mockMvc.perform(get("/api/banks?q=mash"))
         .andExpect(status().isOk())
@@ -56,7 +57,7 @@ class BanksControllerTest {
   @Test
   void searchByBicReturnsList() throws Exception {
     AeBankInfo info = new AeBankInfo("033", "Mashreq", "Mashreq", "BOMLAEAD", "BOMLAEADXXX", "203320101", "Live");
-    when(registry.search(null, "BOMLAEAD", 50)).thenReturn(List.of(info));
+    when(registry.search(null, "BOMLAEAD", 50)).thenReturn(new ArrayList<>(List.of(info)));
 
     mockMvc.perform(get("/api/banks?bic=BOMLAEAD"))
         .andExpect(status().isOk())
