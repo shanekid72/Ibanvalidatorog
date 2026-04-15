@@ -11,8 +11,14 @@ public class OpenApiConfig {
     @Bean
     public OpenAPI ibanValidatorOpenAPI() {
         return new OpenAPI()
-                .info(new Info().title("UAE IBAN Validator API")
-                        .description("API for validating UAE IBANs and searching bank codes.")
-                        .version("1.0"));
+                .info(new Info().title("IBAN Validator API")
+                        .description("""
+                                Two layers of IBAN validation:
+
+                                • **UAE-strict** (`/api/bank-details`, `/api/banks/**`) — validates UAE IBANs against a curated registry of 48 UAE banks, with BIC, routing number, and live/inactive status.
+
+                                • **Generic, multi-country** (`/api/iban/**`) — country-agnostic validation backed by iban4j, supporting 102 IBAN-using countries with parsed bank code, branch code, and account number.
+                                """)
+                        .version("1.1"));
     }
 }
